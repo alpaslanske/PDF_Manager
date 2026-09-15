@@ -27,7 +27,7 @@ from database import Database
 #from widgets.pdf_viewer import PDFViewer
 from widgets.pdf_viewer_scroll import PDFViewer
 from widgets.bookmark_tree import BookmarkTree
-
+print(sys.argv)
 class MainWindow(QMainWindow):
 
     def __init__(self):
@@ -117,19 +117,6 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.search_box)
         left_layout.addWidget(self.tree)
         # -----------------------------------------------------------------
-
-        self.splitter = QSplitter()
-        # Eski hali: self.splitter.addWidget(self.tree)
-        self.splitter.addWidget(self.left_panel) # Artık tek başına tree yerine paneli ekliyoruz
-        self.splitter.addWidget(self.viewer)
-        self.splitter.setSizes([250, 1150])
-        self.splitter.setStretchFactor(0, 0)
-        self.splitter.setStretchFactor(1, 1)
-
-        # Eski ana düzendeki arama çubuğu ekleme kodlarını temizleyip root layout'u kuruyoruz
-        root.addLayout(toolbar)
-        root.addWidget(self.splitter, 1)
-
         self.pdf_search = QLineEdit()
         self.pdf_search.returnPressed.connect(self.search_in_pdf)
         self.pdf_search.setPlaceholderText("PDF içinde ara...")
@@ -137,15 +124,42 @@ class MainWindow(QMainWindow):
         btn_search = QPushButton("Bul")
         btn_search.clicked.connect(self.search_in_pdf)
 
-        root.addWidget(self.pdf_search)
-        root.addWidget(btn_search)
-
         self.search_results = QListWidget()
-        self.search_results.setMaximumHeight(60)
         self.search_results.itemDoubleClicked.connect(
             self.goto_search_result
         )
-        root.addWidget(self.search_results)
+
+        search_panel = QWidget()
+
+        search_layout = QVBoxLayout(search_panel)
+
+        search_layout.setContentsMargins(0, 0, 0, 0)
+
+        search_layout.addWidget(self.pdf_search)
+
+        search_layout.addWidget(btn_search)
+
+        search_layout.addWidget(self.search_results)
+
+
+        self.splitter = QSplitter()
+        # Eski hali: self.splitter.addWidget(self.tree)
+        self.splitter.addWidget(self.left_panel)
+
+        self.splitter.addWidget(self.viewer)
+
+        self.splitter.addWidget(search_panel)
+
+        self.splitter.setSizes([250, 900, 300])
+        #print(self.splitter.sizes())
+        #search_panel.setStyleSheet("background-color: red;")
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+
+        # Eski ana düzendeki arama çubuğu ekleme kodlarını temizleyip root layout'u kuruyoruz
+        root.addLayout(toolbar)
+        root.addWidget(self.splitter, 1)
+
 
         central.setLayout(root)
         self.setCentralWidget(central)
@@ -547,6 +561,24 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
     window = MainWindow()
+
+    if len(sys.argv) > 1:
+
+        pdf_path = sys.argv[1]
+
+        if Path(pdf_path).exists():
+
+            window.current_pdf = pdf_path
+
+            window.viewer.open_pdf(pdf_path)
+
+            window.update_page_label()
+
+            window.load_pdf_bookmarks()
+
     window.show()
+
     sys.exit(app.exec())
+

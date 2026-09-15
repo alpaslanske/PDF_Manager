@@ -98,19 +98,19 @@ class PDFViewer(QScrollArea):
             w = int((rect.x1 - rect.x0) * self.zoom)
             h = int((rect.y1 - rect.y0) * self.zoom)
 
+            painter.fillRect(
+                x, y, w, h,
+                QColor(255, 255, 0, 80)
+            )
+
             painter.setPen(
-                           QPen(
-                           QColor(255, 255, 0),
-                           3
-                           )
+                QPen(QColor(255, 0, 0), 2)
             )
 
             painter.drawRect(
-                             x,
-                             y,
-                             w,
-                             h
+                x, y, w, h
             )
+
 
             painter.end()
         self.image_label.setPixmap(
