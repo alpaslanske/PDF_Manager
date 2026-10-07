@@ -1,6 +1,8 @@
+#!/usr/bin/env python3
 import json
-from pathlib import Path
+import os
 import sys
+from pathlib import Path
 from collections import defaultdict
 
 from PySide6.QtWidgets import (
@@ -27,7 +29,14 @@ from database import Database
 #from widgets.pdf_viewer import PDFViewer
 from widgets.pdf_viewer_scroll import PDFViewer
 from widgets.bookmark_tree import BookmarkTree
-print(sys.argv)
+
+# ==============================================================================
+# KESİN ÇÖZÜM: Program hangi dizinden çağrılırsa çağrılsın app.py'nin konumunu sabitle
+# ==============================================================================
+PROJE_ANA_DIZINI = Path(os.path.realpath(__file__)).parent
+os.chdir(PROJE_ANA_DIZINI)
+# ==============================================================================
+
 class MainWindow(QMainWindow):
 
     def __init__(self):
@@ -41,11 +50,11 @@ class MainWindow(QMainWindow):
         self.page_label = QLabel("Sayfa: -/-")
         self.zoom_label = QLabel("Zoom: %150")
 
-                # YENİ EKLEMENİZ GEREKEN BAĞLANTI (CONNECT) SATIRI:
+        # YENİ EKLEMENİZ GEREKEN BAĞLANTI (CONNECT) SATIRI:
         self.viewer.zoom_changed.connect(self.update_zoom_label)
 
-        # Ayarlar dosyası yolu burada tanımlandı
-        self.settings_file = Path("data/settings.json")
+        # Ayarlar dosyası yolu artık dinamik ve kesin olarak app.py yanındaki data klasörüdür
+        self.settings_file = PROJE_ANA_DIZINI / "data" / "settings.json"
 
         self.setup_ui()
         self.load_groups()
@@ -53,7 +62,7 @@ class MainWindow(QMainWindow):
 
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self.show_tree_menu)
-        self.tree.itemDoubleClicked.connect(self.open_bookmark)
+        self.tree.itemClicked.connect(self.open_bookmark)
         #self.zoom_label = QLabel("Zoom: %150")
 
     def setup_ui(self):
@@ -65,10 +74,10 @@ class MainWindow(QMainWindow):
         toolbar.setSpacing(4)
 
         btn_open = QPushButton("PDF Aç")
-        btn_prev = QPushButton("←")
-        btn_next = QPushButton("→")
-        btn_zoom_in = QPushButton("+")
-        btn_zoom_out = QPushButton("-")
+        btn_prev = QPushButton("← Önceki")
+        btn_next = QPushButton("Sonraki →")
+        btn_zoom_in = QPushButton("+ Büyüt")
+        btn_zoom_out = QPushButton("- Küçült")
         btn_group = QPushButton("Grup Ekle")
         btn_toggle = QPushButton("☰ Yer İmleri")
 
@@ -109,14 +118,19 @@ class MainWindow(QMainWindow):
 
         # Sol panel için bir container widget ve layout oluşturuyoruz
         self.left_panel = QWidget()
+        self.left_panel.setMinimumWidth(200) # Tekrar açıldığında en az 200px genişlikte olmasını zorlar
+
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0) # Boşlukları sıfırlıyoruz
         left_layout.setSpacing(4)
 
+        self.search_box.textChanged.connect(self.filter_tree)
         # Arama kutusunu ve ağaç yapısını sırayla sol panele ekliyoruz
         left_layout.addWidget(self.search_box)
         left_layout.addWidget(self.tree)
         # -----------------------------------------------------------------
+
+
         self.pdf_search = QLineEdit()
         self.pdf_search.returnPressed.connect(self.search_in_pdf)
         self.pdf_search.setPlaceholderText("PDF içinde ara...")
@@ -166,8 +180,9 @@ class MainWindow(QMainWindow):
 
 
     def open_pdf(self):
+        startup_dir = os.path.expanduser("/run/media/alpaslan/Backup_Drive/CloudsOfAlp")
         filename, _ = QFileDialog.getOpenFileName(
-            self, "PDF Aç", "", "PDF Files (*.pdf)"
+            self, "PDF Aç", startup_dir, "PDF Files (*.pdf)"
         )
         if not filename:
             return
@@ -175,6 +190,11 @@ class MainWindow(QMainWindow):
         self.viewer.open_pdf(filename)
         self.update_page_label()
         self.load_pdf_bookmarks()
+
+        # --- YENİ: Başlığa açılan PDF'in adını yazdır ---
+        dosya_adi = Path(filename).name
+        self.setWindowTitle(f"PDF Bookmark Manager V1 - {dosya_adi}")
+
 
     def load_pdf_bookmarks(self):
         for i in range(self.tree.topLevelItemCount()):
@@ -265,14 +285,38 @@ class MainWindow(QMainWindow):
             self.load_pdf_bookmarks()
         #print("load_groups sonrası:",self.viewer.current_page)
 
+    def toggle_bookmarks(self):
+        # Splitter'ın mevcut boyutlarını alıyoruz
+        sizes = self.splitter.sizes()
+
+        # Sol panelin şu an açık mı kapalı mı olduğunu ilk elemanın boyutundan anlıyoruz
+        if sizes[0] > 0:
+            # Açıksa: Mevcut genişliği geçici olarak saklayıp sol paneli 0 yapıyoruz (gizliyoruz)
+            self._last_left_width = sizes[0]
+            sizes[0] = 0
+        else:
+            # Kapalıysa: Hafızadaki eski genişliğe veya varsayılan 250 değerine geri getiriyoruz
+            sizes[0] = getattr(self, "_last_left_width", 250)
+
+        self.splitter.setSizes(sizes)
+
     def save_settings(self):
+        # Panel splitter içinde 0 boyutundaysa kapalı, 0'dan büyükse açık demektir
+        sizes = self.splitter.sizes()
+        is_visible = sizes[0] > 0
+
+        # Eğer gizliyken kapatılıyorsa, açıldığında eski boyutu kaybolmasın diye
+        # hafızadaki gerçek genişliği settings'e gönderiyoruz
+        if not is_visible and hasattr(self, "_last_left_width"):
+            sizes[0] = self._last_left_width
+
         data = {
             "window_width": self.width(),
             "window_height": self.height(),
-            "splitter_sizes": self.splitter.sizes(),
+            "splitter_sizes": sizes,
             "last_pdf": getattr(self, "current_pdf", ""),
             "last_page": self.viewer.current_page,
-            "bookmarks_visible": self.tree.isVisible()
+            "bookmarks_visible": is_visible
         }
         with open(self.settings_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
@@ -288,22 +332,35 @@ class MainWindow(QMainWindow):
                 data.get("window_width", 1400),
                 data.get("window_height", 900)
             )
-            self.splitter.setSizes(
-                data.get("splitter_sizes", [250, 1150])
-            )
+
+            splitter_sizes = data.get("splitter_sizes", [250, 900, 300])
+            is_visible = data.get("bookmarks_visible", True)
+
+            if not is_visible:
+                # Eğer kapalı kaydedildiyse genişliğini hafızaya alıp splitter'da 0 yapıyoruz
+                self._last_left_width = splitter_sizes[0]
+                splitter_sizes[0] = 0
+            else:
+                self._last_left_width = splitter_sizes[0]
+
+            self.splitter.setSizes(splitter_sizes)
 
             pdf_path = data.get("last_pdf")
             page = data.get("last_page", 0)
-
-            self.tree.setVisible(data.get("bookmarks_visible", True))
 
             if pdf_path and Path(pdf_path).exists():
                 self.current_pdf = pdf_path
                 self.viewer.open_pdf(pdf_path)
                 self.viewer.goto_page(page)
                 self.update_page_label()
+
+                # --- YENİ: Otomatik yüklenen son PDF'in adını başlığa yazdır ---
+                dosya_adi = Path(pdf_path).name
+                self.setWindowTitle(f"PDF Bookmark Manager V1 - {dosya_adi}")
+
         except Exception as e:
             print("Settings error:", e)
+
 
     def closeEvent(self, event):
         self.save_settings()
@@ -354,9 +411,6 @@ class MainWindow(QMainWindow):
         self.viewer.goto_page(page)
         self.viewer.set_highlight(rect)
         self.update_page_label()
-
-    def toggle_bookmarks(self):
-        self.tree.setVisible(not self.tree.isVisible())
 
     def filter_tree(self, text):
         text = text.lower().strip()
@@ -565,20 +619,17 @@ if __name__ == "__main__":
     window = MainWindow()
 
     if len(sys.argv) > 1:
-
-        pdf_path = sys.argv[1]
-
+        pdf_path = sys.argv[1] # Not: Önceki kodunuzdaki sys.argv hatası da burada düzeltildi
         if Path(pdf_path).exists():
-
             window.current_pdf = pdf_path
-
             window.viewer.open_pdf(pdf_path)
-
             window.update_page_label()
-
             window.load_pdf_bookmarks()
 
-    window.show()
+            # --- YENİ: Çift tıklanarak açılan PDF'in adını başlığa yazdır ---
+            dosya_adi = Path(pdf_path).name
+            window.setWindowTitle(f"PDF Bookmark Manager V1 - {dosya_adi}")
 
+    window.show()
     sys.exit(app.exec())
 

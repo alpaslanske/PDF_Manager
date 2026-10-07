@@ -272,20 +272,22 @@ class PDFViewer(QScrollArea):
 
         if event.modifiers() & Qt.ControlModifier:
 
-           if event.angleDelta().y() > 0:
-              self.zoom_in()
-           else:
-              self.zoom_out()
-           self.zoom_changed.emit()
-           event.accept()
-           return
+            if event.angleDelta().y() > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
 
-        self.verticalScrollBar().setValue(
-            self.verticalScrollBar().value()
-            - event.angleDelta().y()
-        )
+            self.zoom_changed.emit()
+            event.accept()
+            return
 
+        delta = event.angleDelta().y()
+
+        if abs(delta) >= 120:
+
+            if delta > 0:
+                self.previous_page()
+            else:
+                self.next_page()
 
         event.accept()
-
-        super().wheelEvent(event)
